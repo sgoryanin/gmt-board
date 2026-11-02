@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#123b50">
+  <meta name="description" content="Дневное расписание специалистов и очередь сервисных обращений.">
+  <title>ГМТ Доска — Расписание специалистов</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#schedule-title">К расписанию</a>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="ГМТ Доска, главная"><span class="brand-symbol" aria-hidden="true">Г<span>М</span>Т</span><span class="brand-divider"></span><span>Доска · Сервисная служба</span></a>
+    <div class="demo-tools"><button id="reset-demo" class="quiet-button">Сбросить демо</button><span class="demo-badge"><span class="dot" aria-hidden="true"></span>Демонстрационные данные</span></div>
+  </header>
+  <main>
+    <section class="page-heading" aria-labelledby="page-title">
+      <div><p class="eyebrow">РАСПРЕДЕЛЕНИЕ ОБРАЩЕНИЙ</p><h1 id="page-title">Расписание специалистов</h1><p class="subtitle">Весь рабочий день — на одной шкале.</p></div>
+      <label class="department-label">Подразделение<select id="department" aria-label="Подразделение"></select></label>
+    </section>
+    <section class="toolbar" aria-label="Выбор дня">
+      <div class="date-controls"><button id="previous-day" class="icon-button" aria-label="Предыдущий день">←</button><label class="date-field"><span class="sr-only">Дата расписания</span><input id="selected-date" type="date" min="2000-01-01" max="2099-12-31" required aria-label="Дата расписания"></label><button id="next-day" class="icon-button" aria-label="Следующий день">→</button><button id="today" class="quiet-button">Сегодня</button></div>
+      <nav id="week" class="week" aria-label="Дни недели"></nav>
+    </section>
+    <section class="stream-panel" aria-label="Демонстрационный поток обращений">
+      <div class="stream-heading"><div><strong>Входящий поток · демо</strong><p id="ws-status" role="status" aria-live="polite"></p></div><button id="ws-toggle" class="quiet-button" type="button">Пауза</button></div>
+      <details class="stream-settings"><summary>Настройки потока</summary>
+        <form id="ws-settings" novalidate><div class="stream-fields"><label for="ws-interval">Интервал, сек<input id="ws-interval" type="number" min="1" max="300" step="1" required></label><label for="ws-limit">Предел обращений<input id="ws-limit" type="number" min="1" max="1000" step="1" required></label><button class="primary-button" type="submit">Применить</button></div><p class="form-hint">При достижении предела генерация остановится. Увеличьте предел или сбросьте демо для продолжения.</p><p id="ws-error" class="form-error" role="alert" hidden></p></form>
+      </details>
+      <p id="ws-notice" class="form-hint" role="status" aria-live="polite"></p>
+      <details id="ws-probe" class="stream-settings" hidden><summary>Проверка источника · изолированное демо</summary><form id="ws-probe-form"><label for="ws-probe-payload">JSON-сообщение</label><textarea id="ws-probe-payload" rows="4"></textarea><button class="quiet-button" type="submit">Передать сообщение</button><p id="ws-probe-result" role="status"></p></form></details>
+    </section>
+    <section id="summary" class="summary" aria-label="Объём работ за день"></section>
+    <div class="section-heading"><div class="section-title"><h2 id="schedule-title" tabindex="-1">План на день</h2><span id="day-caption" class="muted"></span></div><div class="schedule-meta"><span id="work-hours"></span><span id="access-mode" class="badge"></span><button id="open-queue" class="primary-button mobile-only" aria-controls="queue-panel" aria-expanded="false">Обращения <span id="mobile-count">0</span></button></div></div>
+    <div id="clock-notice" class="message" hidden></div>
+    <div id="storage-warning" class="storage-warning" role="status" hidden></div>
+    <div id="message" class="message" role="status" aria-live="polite" hidden></div>
+    <section id="error-panel" class="error-panel" role="alert" hidden><div><h2>Не удалось загрузить расписание</h2><p id="error-text"></p></div><button id="retry" class="primary-button">Повторить загрузку</button></section>
+    <div id="workspace" class="workspace" aria-busy="true">
+      <section class="schedule-panel" aria-labelledby="schedule-title">
+        <div id="calendar-scroll" class="calendar-scroll" tabindex="0" aria-label="Календарь специалистов. Доступна горизонтальная и вертикальная прокрутка"><div id="calendar" class="calendar"></div></div>
+        <footer class="calendar-footer"><div class="legend" aria-label="Виды работ"><span><i class="legend-dot maintenance"></i>ТО</span><span><i class="legend-dot repair"></i>Ремонт</span><span><i class="legend-dot diagnostics"></i>Диагностика</span><span><i class="legend-dot manual"></i>Ручное событие</span></div><span class="gap-note">Между событиями · 30 мин</span></footer>
+      </section>
+      <aside id="queue-panel" class="queue-panel" aria-labelledby="queue-title">
+        <div class="queue-heading"><div><p class="eyebrow">НЕ НАЗНАЧЕНЫ</p><h2 id="queue-title">Обращения <span id="queue-count" class="count">0</span></h2></div><button id="close-queue" class="icon-button mobile-only" aria-label="Закрыть обращения">×</button></div>
+        <div class="queue-controls"><button id="create-event" class="primary-button create-event-button" disabled>＋ Создать событие</button><label class="search-field"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Найти обращение…" aria-label="Поиск обращений"></label><label class="sort-label">Порядок<select id="sort" aria-label="Порядок обращений"><option value="priority">Сначала срочные</option><option value="duration-desc">Сначала длительные</option><option value="duration-asc">Сначала короткие</option></select></label></div>
+        <div id="queue-dropzone" class="queue-dropzone" aria-hidden="true">↙ Перетащите сюда, чтобы вернуть в очередь</div>
+        <p id="ws-pending" class="queue-update-note" role="status" hidden>Есть новые обращения. Список обновится после завершения действия.</p>
+        <div id="queue-list" class="queue-list" aria-live="polite"></div>
+        <footer class="queue-footer"><span class="small-dot" aria-hidden="true"></span><span class="drag-help-desktop">Перетащите обращение или откройте карточку</span><span class="mobile-only">Откройте карточку для назначения</span></footer>
+      </aside>
+    </div>
+    <footer class="page-footer"><span>ГМТ Доска <span aria-hidden="true">/</span> Планирование сервисных работ</span><span id="storage-status">Сохраняется в этом браузере</span></footer>
+  </main>
+  <div id="queue-backdrop" class="queue-backdrop" hidden></div>
+  <dialog id="details-dialog" aria-labelledby="details-title">
+    <div class="dialog-heading"><div><p class="eyebrow">КАРТОЧКА ОБРАЩЕНИЯ</p><h2 id="details-title"></h2></div><button id="close-details" class="icon-button" aria-label="Закрыть карточку">×</button></div>
+    <div class="dialog-scroll">
+      <div id="details-content"></div>
+      <form id="status-form" class="assignment-form status-form" novalidate hidden>
+        <h3>Действия специалиста</h3>
+        <p id="status-clock" class="form-hint"></p>
+        <div class="assignment-actions"><button id="start-work" class="primary-button" type="button" aria-describedby="start-reason">Начать работу</button><button id="defer-task" class="quiet-button" type="button">Отложить</button><button id="move-tomorrow" class="quiet-button" type="button">Перенести на завтра</button></div>
+        <p id="tomorrow-progress" class="form-hint" role="status" aria-live="polite"></p>
+        <p id="start-reason" class="form-hint"></p>
+        <label class="completion-label" for="completion-time">Фактическое завершение</label>
+        <input id="completion-time" type="datetime-local" step="60" required aria-describedby="completion-hint status-error">
+        <p id="completion-hint" class="form-hint">Можно завершить без отдельного старта. При досрочном завершении занятость сократится, а интервал 30 минут будет отсчитываться от факта.</p>
+        <p id="status-error" class="form-error" role="alert" hidden></p>
+        <button class="primary-button complete-button" type="submit">Завершить</button>
+      </form>
+      <form id="assignment-form" class="assignment-form" novalidate>
+        <h3 id="assignment-title">Назначить специалиста</h3>
+        <p id="assignment-rules" class="form-hint"></p>
+        <div class="assignment-fields">
+          <label>Специалист<select id="assignment-engineer" required aria-describedby="assignment-score assignment-error"><option value="">Выберите специалиста</option></select></label>
+          <label>Начало<input id="assignment-time" type="time" step="900" required aria-describedby="assignment-rules assignment-preview assignment-error"></label>
+        </div>
+        <p id="assignment-score" class="form-hint"></p>
+        <p id="assignment-preview" class="assignment-preview" aria-live="polite"></p>
+        <p id="assignment-error" class="form-error" role="alert" hidden></p>
+        <div class="assignment-actions"><button id="assign-task" class="primary-button" type="submit">Назначить</button><button id="unassign-task" class="quiet-button" type="button">Вернуть в очередь</button></div>
+      </form>
+      <p id="assignment-readonly" class="readonly-note" hidden></p>
+    </div>
+    <form method="dialog" class="dialog-footer"><button class="quiet-button">Закрыть</button></form>
+  </dialog>
+  <dialog id="create-dialog" aria-labelledby="create-title">
+    <div class="dialog-heading"><div><p class="eyebrow">РУЧНОЕ СОБЫТИЕ</p><h2 id="create-title">Создать событие</h2><p id="create-context" class="form-hint"></p></div><button id="close-create" class="icon-button" aria-label="Закрыть создание события">×</button></div>
+    <form id="create-event-form" novalidate aria-busy="false">
+      <div class="dialog-scroll create-content">
+        <p class="form-hint">Событие появится в очереди. Специалиста и время можно назначить после создания.</p>
+        <fieldset id="create-fields">
+          <legend class="sr-only">Данные нового события</legend>
+          <label for="create-type">Тип события</label><select id="create-type" required aria-describedby="create-type-error"></select><p id="create-type-error" class="form-error" hidden></p>
+          <label for="create-description">Описание</label><textarea id="create-description" rows="4" required placeholder="Например, обучение работе с новым оборудованием" aria-describedby="create-description-error"></textarea><p id="create-description-error" class="form-error" hidden></p>
+          <label for="create-duration">Длительность, минут</label><input id="create-duration" type="number" min="1" step="1" value="60" required inputmode="numeric" aria-describedby="create-duration-hint create-duration-error"><p id="create-duration-hint" class="form-hint">Положительное целое число. При назначении учитываются обед и интервал 30 минут.</p><p id="create-duration-error" class="form-error" hidden></p>
+        </fieldset>
+        <p id="create-error" class="form-error" role="alert" hidden></p><p id="create-progress" class="form-hint" role="status" aria-live="polite"></p>
+      </div>
+      <div class="dialog-footer create-actions"><button id="cancel-create" class="quiet-button" type="button">Отмена</button><button id="save-event" class="primary-button" type="submit">Создать событие</button></div>
+    </form>
+  </dialog>
+  <dialog id="reset-dialog" aria-labelledby="reset-title">
+    <div class="dialog-heading"><h2 id="reset-title">Сбросить демо?</h2></div>
+    <p class="reset-description">Назначения и история во всех датах и подразделениях будут заменены исходными демонстрационными данными. Это действие нельзя отменить.</p>
+    <form method="dialog" class="dialog-footer reset-actions"><button id="cancel-reset" class="quiet-button" value="cancel" autofocus>Отмена</button><button id="confirm-reset" class="primary-button" value="confirm">Сбросить</button></form>
+  </dialog>
+  <p id="drag-instructions" class="sr-only">На широком экране карточку можно перетащить в календарь или очередь. Escape отменяет перенос. Нажмите карточку для назначения через форму.</p>
+  <div id="drag-tooltip" class="drag-tooltip" hidden></div>
+  <div id="drag-status" class="sr-only" role="status" aria-live="polite"></div>
+  <noscript><p class="error-panel">Для просмотра расписания включите JavaScript в браузере.</p></noscript>
+</body>
+</html>
